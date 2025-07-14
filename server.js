@@ -14,10 +14,7 @@ const app = express();
 
 app.use(cors({
   origin: [
-    'http://localhost:5173',
-    'https://chat-app-sigma-liard.vercel.app',
-    'https://chat-app-git-main-mshanu-techs-projects.vercel.app', // ✅ Add this
-    'https://chatappbackend-eg0b.onrender.com/api/auth/signup'
+    '*'
   ],
   credentials: true
 }));
@@ -29,10 +26,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
-      'http://localhost:5173',
-      'https://chat-app-sigma-liard.vercel.app',
-      'https://chat-app-git-main-mshanu-techs-projects.vercel.app', // ✅ Add this
-      'https://chatappbackend-eg0b.onrender.com/api/auth/signup'
+      '*'
     ],
     methods: ['GET', 'POST']
   }
@@ -45,7 +39,7 @@ const pendingInvites = new Map();
 io.on('connection', (socket) => {
   const userID = socket.handshake.query.userID;
   const name = socket.handshake.query.name;
-console.log("socket working");
+  console.log("socket working");
 
   if (userID && name) {
     onlineUsers.set(userID, { socketId: socket.id, name });
