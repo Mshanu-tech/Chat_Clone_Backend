@@ -12,10 +12,21 @@ connectDB(); // Connect to MongoDB
 
 const app = express();
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://chat-app-sigma-liard.vercel.app',
+  'https://chat-app-git-main-mshanu-techs-projects.vercel.app'
+];
+
 app.use(cors({
-  origin: [
-    '*'
-  ],
+  origin: function (origin, callback) {
+    // allow requests with no origin (e.g., mobile apps or curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -23,14 +34,15 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      '*'
-    ],
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
+
 
 
 const onlineUsers = new Map();
