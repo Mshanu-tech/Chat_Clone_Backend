@@ -16,7 +16,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://chat-app-sigma-liard.vercel.app',
-    'https://chat-app-git-main-mshanu-techs-projects.vercel.app' // ✅ Add this
+    'https://chat-app-git-main-mshanu-techs-projects.vercel.app', // ✅ Add this
+    'https://chatappbackend-eg0b.onrender.com/api/auth/signup'
   ],
   credentials: true
 }));
@@ -30,7 +31,8 @@ const io = new Server(server, {
     origin: [
       'http://localhost:5173',
       'https://chat-app-sigma-liard.vercel.app',
-      'https://chat-app-git-main-mshanu-techs-projects.vercel.app' // ✅ Add this
+      'https://chat-app-git-main-mshanu-techs-projects.vercel.app', // ✅ Add this
+      'https://chatappbackend-eg0b.onrender.com/api/auth/signup'
     ],
     methods: ['GET', 'POST']
   }
