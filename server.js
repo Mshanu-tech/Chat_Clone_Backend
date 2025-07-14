@@ -13,7 +13,11 @@ connectDB(); // Connect to MongoDB
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://chat-app-sigma-liard.vercel.app'],
+  origin: [
+    'http://localhost:5173',
+    'https://chat-app-sigma-liard.vercel.app',
+    'https://chat-app-git-main-mshanu-techs-projects.vercel.app' // ✅ Add this
+  ],
   credentials: true
 }));
 
@@ -23,10 +27,15 @@ app.use('/api/auth', authRoutes);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://chat-app-sigma-liard.vercel.app',
+    origin: [
+      'http://localhost:5173',
+      'https://chat-app-sigma-liard.vercel.app',
+      'https://chat-app-git-main-mshanu-techs-projects.vercel.app' // ✅ Add this
+    ],
     methods: ['GET', 'POST']
   }
 });
+
 
 const onlineUsers = new Map();
 const pendingInvites = new Map();
@@ -34,6 +43,7 @@ const pendingInvites = new Map();
 io.on('connection', (socket) => {
   const userID = socket.handshake.query.userID;
   const name = socket.handshake.query.name;
+console.log("socket working");
 
   if (userID && name) {
     onlineUsers.set(userID, { socketId: socket.id, name });
