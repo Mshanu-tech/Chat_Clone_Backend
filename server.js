@@ -13,9 +13,10 @@ connectDB(); // Connect to MongoDB
 const app = express();
 
 app.use(cors({
-  origin: 'https://chat-app-sigma-liard.vercel.app',
+  origin: ['http://localhost:5173', 'https://chat-app-sigma-liard.vercel.app'],
   credentials: true
 }));
+
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 
