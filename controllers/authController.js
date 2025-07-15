@@ -28,9 +28,10 @@ exports.googleAuth = async (req, res) => {
     // Get friend & messages
     let friend = null;
     let messages = [];
+console.log(user);
 
-    if (user.friend) {
-      const friendUser = await User.findOne({ userID: user.friend });
+    if (user.friends) {
+      const friendUser = await User.findOne({ userID: user.friends });
       if (friendUser) {
         friend = { userID: friendUser.userID, name: friendUser.name };
 
@@ -129,10 +130,11 @@ exports.friends = async (req, res) => {
 
   try {
     const currentUser = await User.findOne({ userID });
-    if (!currentUser || !currentUser.friend) return res.json([]);
+    
+    if (!currentUser || !currentUser.friends) return res.json([]);
 
     const friends = await User.find({
-      userID: currentUser.friend,
+      userID: currentUser.friends,
     }, { userID: 1, name: 1, _id: 0 });
 
     res.json(friends);
