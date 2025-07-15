@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema({
   picture: String,
   is_google_user: { type: Boolean, default: false },
   google_id: String,
-  friend: { type: String, default: null },
+  friends: { type: [String], default: [] }, // Now an array of strings
 });
 
 module.exports = mongoose.model('User', userSchema);

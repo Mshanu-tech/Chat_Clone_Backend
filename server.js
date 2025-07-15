@@ -93,29 +93,39 @@ io.on('connection', (socket) => {
   });
 
   // Handle invite response
-  socket.on('invite_response', async ({ to, accepted }) => {
-    const inviter = onlineUsers.get(to);
-    const receiverID = socket.userID;
-    const receiverName = socket.name;
+socket.on('invite_response', async ({ to, accepted }) => {
+  const inviter = onlineUsers.get(to);
+  const receiverID = socket.userID;
+  const receiverName = socket.name;
 
-    if (inviter) {
-      io.to(inviter.socketId).emit('invite_result', {
-        from: receiverID,
-        fromName: receiverName,
-        accepted,
-      });
+  if (inviter) {
+    io.to(inviter.socketId).emit('invite_result', {
+      from: receiverID,
+      fromName: receiverName,
+      accepted,
+    });
 
-      if (accepted) {
-        try {
-          await User.findOneAndUpdate({ userID: receiverID }, { friend: to });
-          await User.findOneAndUpdate({ userID: to }, { friend: receiverID });
-          console.log(`Friendship stored: ${receiverID} ↔ ${to}`);
-        } catch (err) {
-          console.error('Error storing friendship:', err);
-        }
+    if (accepted) {
+      try {
+        // Add inviter (to) to receiver's friends list
+        await User.findOneAndUpdate(
+          { userID: receiverID },
+          { $addToSet: { friends: to } } // Adds only if not already present
+        );
+
+        // Add receiver (receiverID) to inviter's friends list
+        await User.findOneAndUpdate(
+          { userID: to },
+          { $addToSet: { friends: receiverID } }
+        );
+
+        console.log(`Friendship stored: ${receiverID} ↔ ${to}`);
+      } catch (err) {
+        console.error('Error storing friendship:', err);
       }
     }
-  });
+  }
+});
 
   // Handle messages
   socket.on('send_message', async ({ sender, receiver, message, timestamp, replyTo }) => {
