@@ -153,6 +153,34 @@ socket.on('invite_response', async ({ to, accepted }) => {
     }
   });
 
+  // Add this to your socket.io connection handler
+socket.on('voice_message', async ({ sender, receiver, audio, timestamp, duration, replyTo }) => {
+  const target = onlineUsers.get(receiver);
+
+  if (target) {
+    io.to(target.socketId).emit('voice_message', {
+      from: sender,
+      audio,
+      timestamp,
+      duration,
+      replyTo: replyTo || null,
+    });
+  }
+
+  try {
+    await Message.create({
+      sender,
+      receiver,
+      audio,
+      timestamp: new Date(timestamp),
+      duration,
+      replyTo: replyTo || null,
+    });
+  } catch (err) {
+    console.error('Error saving voice message:', err);
+  }
+});
+
   // Disconnect
   socket.on('disconnect', () => {
     if (socket.userID) {
