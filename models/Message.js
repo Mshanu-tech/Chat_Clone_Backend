@@ -1,16 +1,16 @@
 const mongoose = require('mongoose');
 
-const messageSchema = new mongoose.Schema({
-  sender: String,
-  receiver: String,
-  message: { type: String, required: false },
-  audio: { type: String, required: false }, // Base64 encoded audio
-  duration: { type: Number, required: false }, // Duration in seconds
-  timestamp: Date,
-  replyTo: {
-    type: mongoose.Schema.Types.Mixed,
-    default: null,
-  }
+const MessageSchema = new mongoose.Schema({
+  sender: { type: String, required: true },
+  receiver: { type: String, required: true },
+  message: { type: String },
+  audio: { type: String },
+  duration: { type: Number },
+  file: { type: String },
+  fileType: { type: String },
+  fileName: { type: String },
+  timestamp: { type: Date, default: Date.now },
+  replyTo: { type: Object }
 });
 
-module.exports = mongoose.model('Message', messageSchema);
+module.exports = mongoose.model('Message', MessageSchema);
