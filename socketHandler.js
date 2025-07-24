@@ -151,18 +151,15 @@ function setupSocket(server) {
         console.error('Error saving voice message:', err);
       }
     });
-
-    socket.on('file_message', async (fileMsg) => {
-  try {
-    const savedMessage = await Message.create(fileMsg);
     
-    // Broadcast to the recipient
+socket.on('file_message', (fileMsg) => {
+  try {
     const recipient = onlineUsers.get(fileMsg.receiver);
     if (recipient) {
-      io.to(recipient.socketId).emit('receive_file_message', savedMessage);
+      io.to(recipient.socketId).emit('receive_file_message', fileMsg);
     }
   } catch (error) {
-    console.error('Error handling file message:', error);
+    console.error('Error broadcasting file message:', error);
   }
 });
 

@@ -5,7 +5,7 @@ require('dotenv').config();
 const authRoutes = require('./router/authRoutes');
 const connectDB = require('./config/mongodb'); // MongoDB connection
 const setupSocket = require('./socketHandler');
-const path = require('path');
+const fileRoutes = require('./router/fileRoutes');
 
 connectDB(); // Connect to MongoDB
 
@@ -28,18 +28,9 @@ app.use(cors({
   credentials: true
 }));
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ error: 'File upload error', details: err.message });
-  }
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', authRoutes);
+app.use('/api/files', fileRoutes);
 
 const server = http.createServer(app);
 
