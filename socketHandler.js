@@ -47,22 +47,53 @@ function setupSocket(server) {
     }
 
     // Handle invite send
-    socket.on('send_invite', ({ from, to }) => {
-      const target = onlineUsers.get(to);
-      const sender = onlineUsers.get(from);
+const User = require('./models/User'); // adjust the path as needed
 
-      if (target && sender) {
-        io.to(target.socketId).emit('receive_invite', {
-          from,
-          fromName: sender.name,
-        });
-      } else if (sender) {
-        const existing = pendingInvites.get(to) || [];
-        existing.push({ from, fromName: sender.name });
-        pendingInvites.set(to, existing);
-        console.log(`Stored pending invite for ${to} from ${from}`);
-      }
+socket.on('send_invite', async ({ from, to, fromName }) => {
+  const target = onlineUsers.get(to);
+  const sender = onlineUsers.get(from);
+
+  // Emit to receiver if online
+  if (target && sender) {
+    io.to(target.socketId).emit('receive_invite', {
+      from,
+      fromName: sender.name,
     });
+  } else if (sender) {
+    // Store as pending if receiver offline
+    const existing = pendingInvites.get(to) || [];
+    existing.push({ from, fromName: sender.name });
+    pendingInvites.set(to, existing);
+    console.log(`Stored pending invite for ${to} from ${from}`);
+  }
+
+  try {
+    // Update sender: add to sentRequests
+    await User.findOneAndUpdate(
+      { userID: from },
+      {
+        $addToSet: {
+          sentRequests: { receiver_id: to, status: 'request' },
+        },
+      }
+    );
+
+    // Update receiver: add to myRequests
+    await User.findOneAndUpdate(
+      { userID: to },
+      {
+        $addToSet: {
+          myRequests: { sender_id: from, status: 'request' },
+        },
+      }
+    );
+
+    console.log(`Invite saved: ${from} ➜ ${to}`);
+  } catch (err) {
+    console.error("Error saving invite:", err.message);
+  }
+});
+
 
     // Handle invite response
     socket.on('invite_response', async ({ to, accepted }) => {
@@ -100,46 +131,47 @@ function setupSocket(server) {
     });
 
     // Handle messages
-    socket.on('send_message', async ({ sender, receiver, message, timestamp, replyTo }) => {
+    // Handle messages
+    socket.on('send_message', async ({ sender, receiver, message, timestamp, replyTo }, callback) => {
       const target = onlineUsers.get(receiver);
 
-      if (target) {
-        io.to(target.socketId).emit('receive_message', {
-          sender,
-          message,
-          timestamp,
-          replyTo: replyTo || null,
-        });
-      }
-
       try {
-        await Message.create({
+        const savedMsg = await Message.create({
           sender,
           receiver,
           message,
           timestamp: new Date(timestamp),
           replyTo: replyTo || null,
         });
+        console.log(savedMsg);
+
+        if (target) {
+          io.to(target.socketId).emit('receive_message', {
+            _id: savedMsg._id,  // Include the MongoDB _id
+            sender,
+            message,
+            timestamp,
+            replyTo: replyTo || null,
+          });
+        }
+
+        if (callback) {
+          callback({ status: 'ok', data: savedMsg });
+        }
       } catch (err) {
         console.error('Error saving message:', err);
+        if (callback) {
+          callback({ status: 'error', error: err.message });
+        }
       }
     });
 
-    socket.on('voice_message', async ({ sender, receiver, audio, timestamp, duration, replyTo }) => {
+    socket.on('voice_message', async ({ sender, receiver, audio, timestamp, duration, replyTo }, callback) => {
       const target = onlineUsers.get(receiver);
 
-      if (target) {
-        io.to(target.socketId).emit('voice_message', {
-          from: sender,
-          audio,
-          timestamp,
-          duration,
-          replyTo: replyTo || null,
-        });
-      }
-
       try {
-        await Message.create({
+        // Save to DB
+        const savedVoiceMsg = await Message.create({
           sender,
           receiver,
           audio,
@@ -147,21 +179,94 @@ function setupSocket(server) {
           duration,
           replyTo: replyTo || null,
         });
+
+        // Emit to receiver if online
+        if (target) {
+          io.to(target.socketId).emit('voice_message', {
+            _id: savedVoiceMsg._id,
+            from: sender,
+            audio,
+            timestamp,
+            duration,
+            replyTo: replyTo || null,
+          });
+        }
+
+        if (callback) {
+          callback({ status: 'ok', data: savedVoiceMsg });
+        }
       } catch (err) {
         console.error('Error saving voice message:', err);
+        if (callback) {
+          callback({ status: 'error', error: err.message });
+        }
       }
     });
-    
-socket.on('file_message', (fileMsg) => {
+
+socket.on('file_message', async (fileMsg, callback) => {
   try {
-    const recipient = onlineUsers.get(fileMsg.receiver);
-    if (recipient) {
-      io.to(recipient.socketId).emit('receive_file_message', fileMsg);
+    const {
+      sender,
+      receiver,
+      file,
+      fileType,
+      fileName,
+      timestamp,
+      replyTo
+    } = fileMsg;
+
+    // Save the file message to MongoDB
+    const savedMsg = await Message.create({
+      sender,
+      receiver,
+      file,
+      fileType,
+      fileName,
+      timestamp: new Date(timestamp),
+      replyTo: replyTo || null
+    });
+
+    // Emit to receiver if online
+    const target = onlineUsers.get(receiver);
+    if (target) {
+      io.to(target.socketId).emit('receive_file_message', {
+        _id: savedMsg._id,
+        sender,
+        receiver,
+        file,
+        fileType,
+        fileName,
+        timestamp,
+        replyTo: replyTo || null,
+        from: sender
+      });
+    }
+
+    // Callback to sender
+    if (callback) {
+      callback({
+        status: 'ok',
+        data: {
+          _id: savedMsg._id,
+          sender,
+          receiver,
+          file,
+          fileType,
+          fileName,
+          timestamp,
+          replyTo: replyTo || null
+        }
+      });
     }
   } catch (error) {
-    console.error('Error broadcasting file message:', error);
+    console.error('Error saving file message:', error);
+    if (callback) {
+      callback({ status: 'error', error: error.message });
+    }
   }
 });
+
+
 
     // Disconnect
     socket.on('disconnect', () => {

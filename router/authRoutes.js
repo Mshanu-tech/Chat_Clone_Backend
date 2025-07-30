@@ -8,5 +8,7 @@ router.post('/login', authController.login);
 router.get('/friends/:userID', authController.friends);
 router.get('/last-messages/:userID', authController.lastMessage );
 router.get('/messages/:user1/:user2', authController.messages );
+router.get('/requests/:userID', authController.requests);
+router.patch('/requests/respond', authController.respondToRequest);
 
 module.exports = router; 

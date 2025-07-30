@@ -5,7 +5,7 @@ require('dotenv').config();
 const authRoutes = require('./router/authRoutes');
 const connectDB = require('./config/mongodb'); // MongoDB connection
 const setupSocket = require('./socketHandler');
-const fileRoutes = require('./router/fileRoutes');
+// const fileRoutes = require('./router/fileRoutes');
 
 connectDB(); // Connect to MongoDB
 
@@ -30,7 +30,7 @@ app.use(cors({
 
 app.use(express.json());
 app.use('/api/auth', authRoutes);
-app.use('/api/files', fileRoutes);
+// app.use('/api/files', fileRoutes);
 
 const server = http.createServer(app);
 

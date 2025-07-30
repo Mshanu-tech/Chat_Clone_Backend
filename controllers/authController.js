@@ -28,7 +28,6 @@ exports.googleAuth = async (req, res) => {
     // Get friend & messages
     let friend = null;
     let messages = [];
-console.log(user);
 
     if (user.friends) {
       const friendUser = await User.findOne({ userID: user.friends });
@@ -144,7 +143,6 @@ exports.friends = async (req, res) => {
   }
 };
 
-
 // Get Last Message per Chat
 exports.lastMessage = async (req, res) => {
   const { userID } = req.params;
@@ -186,3 +184,95 @@ exports.messages = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+exports.requests = async (req, res) => {
+  const { userID } = req.params;
+
+  try {
+    const user = await User.findOne({ userID });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Fetch users who sent a request to this user
+    const receivedUserIDs = user.myRequests.map(req => req.sender_id);
+    const receivedUsers = await User.find(
+      { userID: { $in: receivedUserIDs } },
+      { userID: 1, _id: 0 }
+    );
+
+    const receivedRequests = user.myRequests.map(req => {
+      const userInfo = receivedUsers.find(u => u.userID === req.sender_id);
+      return {
+        userID: req.sender_id,
+        status: req.status,
+        type: 'received',
+      };
+    });
+
+    // Fetch users to whom this user sent requests
+    const sentUserIDs = user.sentRequests.map(req => req.receiver_id);
+    const sentUsers = await User.find(
+      { userID: { $in: sentUserIDs } },
+      { userID: 1, _id: 0 }
+    );
+
+    const sentRequests = user.sentRequests.map(req => {
+      const userInfo = sentUsers.find(u => u.userID === req.receiver_id);
+      return {
+        userID: req.receiver_id,
+        status: req.status,
+        type: 'sent',
+      };
+    });
+
+    res.json({
+      received: receivedRequests,
+      sent: sentRequests,
+    });
+  } catch (err) {
+    console.error('Error fetching requests:', err);
+    res.status(500).json({ error: 'Failed to fetch requests' });
+  }
+};
+
+
+exports.respondToRequest = async (req, res) => {
+  const { userID, senderID, action } = req.body;
+
+  if (!['accept', 'decline'].includes(action)) {
+    return res.status(400).json({ error: 'Invalid action' });
+  }
+
+  try {
+    // 1. Update receiver's myRequests
+    await User.updateOne(
+      { userID, 'myRequests.sender_id': senderID },
+      { $set: { 'myRequests.$.status': action } }
+    );
+
+    // 2. Update sender's sentRequests
+    await User.updateOne(
+      { userID: senderID, 'sentRequests.receiver_id': userID },
+      { $set: { 'sentRequests.$.status': action } }
+    );
+
+    // 3. If accepted, add each other as friends
+    if (action === 'accept') {
+      await User.updateOne(
+        { userID },
+        { $addToSet: { friends: senderID } }
+      );
+
+      await User.updateOne(
+        { userID: senderID },
+        { $addToSet: { friends: userID } }
+      );
+    }
+
+    res.status(200).json({ message: `Request ${action}ed successfully` });
+  } catch (err) {
+    console.error('Error updating request status:', err);
+    res.status(500).json({ error: 'Failed to respond to request' });
+  }
+};
+
