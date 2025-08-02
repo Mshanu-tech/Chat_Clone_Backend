@@ -45,54 +45,145 @@ function setupSocket(server) {
       });
       pendingInvites.delete(userID);
     }
-
-    // Handle invite send
-const User = require('./models/User'); // adjust the path as needed
-
-socket.on('send_invite', async ({ from, to, fromName }) => {
-  const target = onlineUsers.get(to);
-  const sender = onlineUsers.get(from);
-
-  // Emit to receiver if online
-  if (target && sender) {
-    io.to(target.socketId).emit('receive_invite', {
-      from,
-      fromName: sender.name,
-    });
-  } else if (sender) {
-    // Store as pending if receiver offline
-    const existing = pendingInvites.get(to) || [];
-    existing.push({ from, fromName: sender.name });
-    pendingInvites.set(to, existing);
-    console.log(`Stored pending invite for ${to} from ${from}`);
-  }
-
+socket.on('send_invite', async ({ from, fromName, to, picture }) => {
   try {
-    // Update sender: add to sentRequests
+    const target = onlineUsers.get(to);
+    const senderUser = onlineUsers.get(from);
+    if (!senderUser) return;
+    const fromUser = await User.findOne({ userID: from });
+    const toUser = await User.findOne({ userID: to });
+    if (!fromUser || !toUser) return;
+
+    // Already friends?
+    if (fromUser.friends.includes(to)) {
+      io.to(senderUser.socketId).emit('invite_feedback', {
+        status: 'friend',
+        message: 'This user is already your friend.'
+      });
+      return;
+    }
+
+    // In sentRequests?
+    const sentReq = fromUser.sentRequests.find(r => r.receiver_id === to);
+    if (sentReq) {
+      if (sentReq.status === 'request') {
+        io.to(senderUser.socketId).emit('invite_feedback', {
+          status: 'pending',
+          message: 'You already sent a request to this user.'
+        });
+        return;
+      }
+      if (sentReq.status === 'accept') {
+        io.to(senderUser.socketId).emit('invite_feedback', {
+          status: 'friend',
+          message: 'This user is already your friend.'
+        });
+        return;
+      }
+      if (sentReq.status === 'decline') {
+        io.to(senderUser.socketId).emit('invite_feedback', {
+          status: 'declined',
+          message: 'This user previously declined your request.',
+          confirmResend: true,
+          to
+        });
+        return;
+      }
+    }
+
+    // In myRequests?
+    const myReq = fromUser.myRequests.find(r => r.sender_id === to);
+    if (myReq) {
+      if (myReq.status === 'request') {
+        io.to(senderUser.socketId).emit('invite_feedback', {
+          status: 'incoming',
+          message: 'This user already sent you a request.',
+          showAccept: true,
+          from: to,
+          fromName: toUser.name,
+          picture: toUser.picture
+        });
+        return;
+      }
+      if (myReq.status === 'accept') {
+        io.to(senderUser.socketId).emit('invite_feedback', {
+          status: 'friend',
+          message: 'This user is already your friend.'
+        });
+        return;
+      }
+    }
+
+    // Save new request
     await User.findOneAndUpdate(
       { userID: from },
-      {
-        $addToSet: {
-          sentRequests: { receiver_id: to, status: 'request' },
-        },
-      }
+      { $addToSet: { sentRequests: { receiver_id: to, status: 'request' } } }
     );
-
-    // Update receiver: add to myRequests
     await User.findOneAndUpdate(
       { userID: to },
+      { $addToSet: { myRequests: { sender_id: from, status: 'request' } } }
+    );
+
+    // Notify receiver
+    if (target) io.to(target.socketId).emit('receive_invite', { from, fromName, picture });
+    else {
+      const arr = pendingInvites.get(to) || [];
+      arr.push({ from, fromName, picture });
+      pendingInvites.set(to, arr);
+    }
+
+    io.to(senderUser.socketId).emit('invite_feedback', {
+      status: 'success',
+      message: `Invite sent to ${to}`
+    });
+
+  } catch (err) {
+    console.error('send_invite error:', err);
+    io.to(socket.id).emit('invite_feedback', {
+      status: 'error',
+      message: 'Something went wrong. Please try again.'
+    });
+  }
+});
+
+socket.on('confirm_resend_invite', async ({ from, to, fromName, picture }) => {
+  try {
+    const sender = onlineUsers.get(from);
+    const receiver = onlineUsers.get(to);
+    if (!sender) return;
+
+    // Reset status in existing requests
+    await User.updateOne(
+      { userID: from, 'sentRequests.receiver_id': to },
+      { $set: { 'sentRequests.$.status': 'request' } }
+    );
+    await User.updateOne(
+      { userID: to, 'myRequests.sender_id': from },
       {
-        $addToSet: {
-          myRequests: { sender_id: from, status: 'request' },
-        },
+        $set: {
+          'myRequests.$.status': 'request',
+          'myRequests.$.fromName': fromName,
+          'myRequests.$.picture': picture
+        }
       }
     );
 
-    console.log(`Invite saved: ${from} ➜ ${to}`);
+    if (receiver) io.to(receiver.socketId).emit('receive_invite', { from, fromName, picture });
+
+    io.to(sender.socketId).emit('invite_feedback', {
+      status: 'success',
+      message: `Re-invite sent to ${to}`
+    });
+
   } catch (err) {
-    console.error("Error saving invite:", err.message);
+    console.error('resend error:', err);
+    io.to(socket.id).emit('invite_feedback', {
+      status: 'error',
+      message: 'Failed to resend invite.'
+    });
   }
 });
+
 
 
     // Handle invite response
@@ -203,68 +294,68 @@ socket.on('send_invite', async ({ from, to, fromName }) => {
       }
     });
 
-socket.on('file_message', async (fileMsg, callback) => {
-  try {
-    const {
-      sender,
-      receiver,
-      file,
-      fileType,
-      fileName,
-      timestamp,
-      replyTo
-    } = fileMsg;
-
-    // Save the file message to MongoDB
-    const savedMsg = await Message.create({
-      sender,
-      receiver,
-      file,
-      fileType,
-      fileName,
-      timestamp: new Date(timestamp),
-      replyTo: replyTo || null
-    });
-
-    // Emit to receiver if online
-    const target = onlineUsers.get(receiver);
-    if (target) {
-      io.to(target.socketId).emit('receive_file_message', {
-        _id: savedMsg._id,
-        sender,
-        receiver,
-        file,
-        fileType,
-        fileName,
-        timestamp,
-        replyTo: replyTo || null,
-        from: sender
-      });
-    }
-
-    // Callback to sender
-    if (callback) {
-      callback({
-        status: 'ok',
-        data: {
-          _id: savedMsg._id,
+    socket.on('file_message', async (fileMsg, callback) => {
+      try {
+        const {
           sender,
           receiver,
           file,
           fileType,
           fileName,
           timestamp,
+          replyTo
+        } = fileMsg;
+
+        // Save the file message to MongoDB
+        const savedMsg = await Message.create({
+          sender,
+          receiver,
+          file,
+          fileType,
+          fileName,
+          timestamp: new Date(timestamp),
           replyTo: replyTo || null
+        });
+
+        // Emit to receiver if online
+        const target = onlineUsers.get(receiver);
+        if (target) {
+          io.to(target.socketId).emit('receive_file_message', {
+            _id: savedMsg._id,
+            sender,
+            receiver,
+            file,
+            fileType,
+            fileName,
+            timestamp,
+            replyTo: replyTo || null,
+            from: sender
+          });
         }
-      });
-    }
-  } catch (error) {
-    console.error('Error saving file message:', error);
-    if (callback) {
-      callback({ status: 'error', error: error.message });
-    }
-  }
-});
+
+        // Callback to sender
+        if (callback) {
+          callback({
+            status: 'ok',
+            data: {
+              _id: savedMsg._id,
+              sender,
+              receiver,
+              file,
+              fileType,
+              fileName,
+              timestamp,
+              replyTo: replyTo || null
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error saving file message:', error);
+        if (callback) {
+          callback({ status: 'error', error: error.message });
+        }
+      }
+    });
 
 
 

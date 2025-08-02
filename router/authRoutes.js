@@ -10,5 +10,6 @@ router.get('/last-messages/:userID', authController.lastMessage );
 router.get('/messages/:user1/:user2', authController.messages );
 router.get('/requests/:userID', authController.requests);
 router.patch('/requests/respond', authController.respondToRequest);
+router.patch('/update-profile', authController.updateProfile);
 
 module.exports = router; 

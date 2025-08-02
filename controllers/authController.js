@@ -7,6 +7,7 @@ const generateUserID = require('../utils/generateUserID');
 // Google Signup/Login
 exports.googleAuth = async (req, res) => {
   const { email, name, picture, googleId } = req.body;
+  console.log(req.body);
 
   try {
     let user = await User.findOne({ email });
@@ -24,13 +25,14 @@ exports.googleAuth = async (req, res) => {
     }
 
     const userID = user.userID;
+    const userPicture = user.picture;
 
     // Get friend & messages
     let friend = null;
     let messages = [];
 
-    if (user.friends) {
-      const friendUser = await User.findOne({ userID: user.friends });
+    if (user.friends && user.friends.length > 0) {
+      const friendUser = await User.findOne({ userID: user.friends[0] }); // assuming first friend
       if (friendUser) {
         friend = { userID: friendUser.userID, name: friendUser.name };
 
@@ -43,7 +45,9 @@ exports.googleAuth = async (req, res) => {
       }
     }
 
-    const token = jwt.sign({ email, name, userID }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    const token = jwt.sign({ email, name, userID, picture: userPicture }, process.env.JWT_SECRET, {
+      expiresIn: '1d',
+    });
 
     res.status(200).json({ token, email, name, userID, friend, messages });
   } catch (err) {
@@ -51,6 +55,7 @@ exports.googleAuth = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 
 // Email Signup
 exports.signup = async (req, res) => {
@@ -129,12 +134,15 @@ exports.friends = async (req, res) => {
 
   try {
     const currentUser = await User.findOne({ userID });
-    
+
     if (!currentUser || !currentUser.friends) return res.json([]);
 
-    const friends = await User.find({
-      userID: currentUser.friends,
-    }, { userID: 1, name: 1, _id: 0 });
+    const friends = await User.find(
+      { userID: currentUser.friends },
+      { userID: 1, name: 1, picture: 1, _id: 0 }
+    );
+
+    console.log(friends);
 
     res.json(friends);
   } catch (err) {
@@ -142,6 +150,7 @@ exports.friends = async (req, res) => {
     res.status(500).json({ error: 'Failed to get friends' });
   }
 };
+
 
 // Get Last Message per Chat
 exports.lastMessage = async (req, res) => {
@@ -193,33 +202,37 @@ exports.requests = async (req, res) => {
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Fetch users who sent a request to this user
+    // Get users who sent requests to this user
     const receivedUserIDs = user.myRequests.map(req => req.sender_id);
     const receivedUsers = await User.find(
       { userID: { $in: receivedUserIDs } },
-      { userID: 1, _id: 0 }
+      { userID: 1, name: 1, picture: 1, _id: 0 }
     );
 
     const receivedRequests = user.myRequests.map(req => {
       const userInfo = receivedUsers.find(u => u.userID === req.sender_id);
       return {
         userID: req.sender_id,
+        fromName: userInfo?.name || 'Unknown',
+        picture: userInfo?.picture || '',
         status: req.status,
         type: 'received',
       };
     });
 
-    // Fetch users to whom this user sent requests
+    // Get users whom this user sent requests to
     const sentUserIDs = user.sentRequests.map(req => req.receiver_id);
     const sentUsers = await User.find(
       { userID: { $in: sentUserIDs } },
-      { userID: 1, _id: 0 }
+      { userID: 1, name: 1, picture: 1, _id: 0 }
     );
 
     const sentRequests = user.sentRequests.map(req => {
       const userInfo = sentUsers.find(u => u.userID === req.receiver_id);
       return {
         userID: req.receiver_id,
+        fromName: userInfo?.name || 'Unknown',
+        picture: userInfo?.picture || '',
         status: req.status,
         type: 'sent',
       };
@@ -275,4 +288,63 @@ exports.respondToRequest = async (req, res) => {
     res.status(500).json({ error: 'Failed to respond to request' });
   }
 };
+
+
+exports.updateProfile = async (req, res) => {
+  const { userID, name, email, profilePhoto } = req.body;
+
+  if (!userID || !name || !email) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    const updateData = {
+      name,
+      email,
+    };
+
+    if (profilePhoto) {
+      updateData.picture = profilePhoto;
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { userID },
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Create new token with updated details
+    const newToken = jwt.sign(
+      {
+        email: updatedUser.email,
+        name: updatedUser.name,
+        userID: updatedUser.userID,
+        picture: updatedUser.picture,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      token: newToken,
+      user: {
+        userID: updatedUser.userID,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        picture: updatedUser.picture,
+      },
+    });
+  } catch (err) {
+    console.error('Error updating profile:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+};
+
+
+
 
